@@ -52,7 +52,6 @@ with st.sidebar:
 
 # --- LOGIKA FILTER UTAMA ---
 # Kita filter berdasarkan kolom 'date' saja (abaikan jam/menit)
-# Ini kunci agar konsisten antara Lokal (WIB) dan Cloud (UTC)
 main_df = all_df[
     (all_df["order_purchase_timestamp"].dt.date >= start_date) & 
     (all_df["order_purchase_timestamp"].dt.date <= end_date)
@@ -69,14 +68,13 @@ Dashboard ini menganalisis dua hal utama:
 # --- 4. Visualisasi 1: Produk Terlaris (Revenue) ---
 st.subheader("1. Kategori Produk dengan Pendapatan Tertinggi")
 
-# Hitung data
+# Hitung data (Biarkan menggunakan semua baris item untuk Revenue)
 sum_order_items_df = main_df.groupby("product_category_name_english").price.sum().sort_values(ascending=False).head(5).reset_index()
 
 # Plot
 fig, ax = plt.subplots(figsize=(10, 6))
 colors = ["#72BCD4", "#D3D3D3", "#D3D3D3", "#D3D3D3", "#D3D3D3"]
 
-# Cek data kosong
 if not sum_order_items_df.empty:
     sns.barplot(x="price", y="product_category_name_english", data=sum_order_items_df, palette=colors, ax=ax)
     ax.set_ylabel(None)
@@ -92,13 +90,16 @@ st.pyplot(fig)
 st.subheader("2. Dampak Keterlambatan Pengiriman terhadap Review")
 
 # Hitung selisih hari & status
-# Gunakan .copy() agar tidak muncul warning SettingWithCopy
 plot_df = main_df.copy()
 plot_df['delivery_diff_days'] = (plot_df['order_delivered_customer_date'] - plot_df['order_estimated_delivery_date']).dt.days
 plot_df['delivery_status'] = plot_df['delivery_diff_days'].apply(lambda x: 'Late Delivery' if x > 0 else 'On Time Delivery')
 
-# Hitung rata-rata review
-review_score_df = plot_df.groupby('delivery_status')['review_score'].mean().reset_index()
+# --- MODIFIKASI AGAR JADI 4.21 (PER ORDER) ---
+# Kita buang duplikat order_id agar setiap pesanan hanya dihitung 1 kali
+unique_orders_df = plot_df.drop_duplicates(subset='order_id', keep='first')
+
+# Hitung rata-rata review dari data unik tersebut
+review_score_df = unique_orders_df.groupby('delivery_status')['review_score'].mean().reset_index()
 
 # Plot
 fig, ax = plt.subplots(figsize=(8, 5))
@@ -113,12 +114,12 @@ if not review_score_df.empty:
         ax=ax
     )
 
-    ax.set_title('Rata-rata Skor Review', fontsize=15)
+    ax.set_title('Rata-rata Skor Review (Per Order)', fontsize=15)
     ax.set_xlabel(None)
     ax.set_ylabel("Skor (1-5)", fontsize=12)
     ax.set_ylim(0, 5.5)
 
-    # Label angka di atas batang (VISUALISASI JELAS)
+    # Label angka di atas batang
     for container in ax.containers:
         ax.bar_label(container, fmt='%.2f', padding=3)
 else:
@@ -127,3 +128,4 @@ else:
 st.pyplot(fig)
 
 st.caption('Copyright (c) Dicoding 2024')
+
